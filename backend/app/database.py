@@ -141,8 +141,12 @@ def init_db():
 # Data Access Methods (Unified for SQLite and Firebase)
 # ---------------------------------------------------------------------------
 
-def insert_reading(data: Dict[str, Any]) -> int:
+def insert_reading(data: Dict[str, Any]) -> Tuple[int, int]:
     """Insert telemetry reading into database (SQLite and Firebase Firestore)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rdata = dict(data)
+    rdata.setdefault("received_at", now_iso)
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -151,7 +155,7 @@ def insert_reading(data: Dict[str, Any]) -> int:
         SELECT COALESCE(MAX(sequence_num), -1) AS max_seq
         FROM readings
         WHERE device_id = ? AND timestamp_ms = ?
-    """, (data["device_id"], data["timestamp_ms"]))
+    """, (rdata["device_id"], rdata["timestamp_ms"]))
     row = cursor.fetchone()
     seq_num = row["max_seq"] + 1
 
@@ -162,10 +166,10 @@ def insert_reading(data: Dict[str, Any]) -> int:
             cal_state, cal_result, led_state, sequence_num
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        data["device_id"], data["timestamp_ms"], data["received_at"],
-        data["sensor_raw"], data["reference_raw"], data["offset"],
-        data["sensor_corrected"], data["residual"], data["residual_abs"],
-        data["cal_state"], data["cal_result"], data["led_state"], seq_num
+        rdata["device_id"], rdata["timestamp_ms"], rdata["received_at"],
+        rdata["sensor_raw"], rdata["reference_raw"], rdata["offset"],
+        rdata["sensor_corrected"], rdata["residual"], rdata["residual_abs"],
+        rdata["cal_state"], rdata["cal_result"], rdata["led_state"], seq_num
     ))
     reading_id = cursor.lastrowid
     conn.commit()
@@ -174,8 +178,8 @@ def insert_reading(data: Dict[str, Any]) -> int:
     # Sync to Firebase Firestore if active
     if _firebase_initialized and _firestore_db:
         try:
-            doc_data = {**data, "id": reading_id, "sequence_num": seq_num}
-            _firestore_db.collection("readings").document(f"{data['device_id']}_{reading_id}").set(doc_data)
+            doc_data = {**rdata, "id": reading_id, "sequence_num": seq_num}
+            _firestore_db.collection("readings").document(f"{rdata['device_id']}_{reading_id}").set(doc_data)
         except Exception as e:
             print(f"[Firebase] Error saving reading: {e}")
 
@@ -183,6 +187,10 @@ def insert_reading(data: Dict[str, Any]) -> int:
 
 def insert_calibration_event(data: Dict[str, Any]):
     """Insert calibration ledger event (SQLite and Firebase Firestore)."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    cdata = dict(data)
+    cdata.setdefault("received_at", now_iso)
+
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -191,9 +199,9 @@ def insert_calibration_event(data: Dict[str, Any]):
             old_offset, new_offset, residual_avg, residual_spread, status, notes
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
-        data["device_id"], data["event_type"], data["timestamp_ms"], data["received_at"],
-        data["old_offset"], data["new_offset"], data["residual_avg"], data["residual_spread"],
-        data["status"], data["notes"]
+        cdata["device_id"], cdata["event_type"], cdata["timestamp_ms"], cdata["received_at"],
+        cdata["old_offset"], cdata["new_offset"], cdata["residual_avg"], cdata["residual_spread"],
+        cdata["status"], cdata["notes"]
     ))
     event_id = cursor.lastrowid
     conn.commit()
@@ -201,7 +209,7 @@ def insert_calibration_event(data: Dict[str, Any]):
 
     if _firebase_initialized and _firestore_db:
         try:
-            doc_data = {**data, "id": event_id}
+            doc_data = {**cdata, "id": event_id}
             _firestore_db.collection("calibration_events").add(doc_data)
         except Exception as e:
             print(f"[Firebase] Error saving calibration event: {e}")

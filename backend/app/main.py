@@ -145,7 +145,7 @@ def get_device_status(device_id: str = DEVICE_ID):
     last_seen_dt = datetime.fromisoformat(row["last_seen"])
     now_dt = datetime.now(timezone.utc)
     seconds_ago = (now_dt - last_seen_dt).total_seconds()
-    is_connected = seconds_ago < 10.0
+    is_connected = seconds_ago < 30.0
 
     explanation = generate_status_explanation(
         row["cal_state"], row["current_offset"], 0.0, row["led_state"]
