@@ -28,6 +28,9 @@ backend/*.sqlite3
 .env
 backend/.env
 .env.local
+serviceAccountKey.json
+backend/serviceAccountKey.json
+*adminsdk*.json
 
 # OS & Editor
 .DS_Store

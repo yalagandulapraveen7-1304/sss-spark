@@ -208,6 +208,11 @@ def insert_calibration_event(data: Dict[str, Any]):
 
 def upsert_device_state(data: Dict[str, Any]):
     """Update or insert device state registry."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    device_data = dict(data)
+    device_data.setdefault("registered_at", now_iso)
+    device_data.setdefault("last_seen", now_iso)
+
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("""
@@ -221,16 +226,16 @@ def upsert_device_state(data: Dict[str, Any]):
             current_offset = excluded.current_offset,
             led_state = excluded.led_state
     """, (
-        data["device_id"], data["registered_at"], data["last_seen"],
-        data["last_timestamp_ms"], data["cal_state"], data["current_offset"],
-        data["led_state"]
+        device_data["device_id"], device_data["registered_at"], device_data["last_seen"],
+        device_data["last_timestamp_ms"], device_data["cal_state"], device_data["current_offset"],
+        device_data["led_state"]
     ))
     conn.commit()
     conn.close()
 
     if _firebase_initialized and _firestore_db:
         try:
-            _firestore_db.collection("device_state").document(data["device_id"]).set(data)
+            _firestore_db.collection("device_state").document(device_data["device_id"]).set(device_data)
         except Exception as e:
             print(f"[Firebase] Error updating device state: {e}")
 
