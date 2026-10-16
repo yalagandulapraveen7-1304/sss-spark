@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+.npm/
+
+# Build artifacts
+frontend/dist/
+dist/
+build/
+*.egg-info/
+
+# Python Cache & Testing
+__pycache__/
+*/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+
+# SQLite Database & Local Data
+*.db
+*.sqlite
+*.sqlite3
+backend/*.db
+backend/*.sqlite3
+
+# Environment & Secrets
+.env
+backend/.env
+.env.local
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
