@@ -14,7 +14,19 @@ from .config import (
     CORS_ORIGINS,
     DEBUG
 )
-from .database import get_db_connection, init_db
+from .database import (
+    get_db_connection,
+    init_db,
+    get_db_type,
+    insert_reading,
+    insert_calibration_event,
+    upsert_device_state,
+    get_device_state,
+    get_readings_history as db_get_readings_history,
+    get_calibration_events as db_get_calibration_events,
+    export_readings as db_export_readings,
+    export_calibration_events as db_export_calibration_events,
+)
 from .schemas import (
     TelemetryPayload,
     ReadingItem,
@@ -106,7 +118,7 @@ def health_check():
     return HealthResponse(
         status="ok",
         version="1.0.0",
-        database="sqlite3",
+        database=get_db_type(),
         timestamp=datetime.now(timezone.utc).isoformat()
     )
 
@@ -115,14 +127,7 @@ def health_check():
 # ----------------------------------------------------
 @app.get("/api/v1/device", response_model=DeviceStatusResponse, tags=["Device"])
 def get_device_status(device_id: str = DEVICE_ID):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT device_id, last_seen, last_timestamp_ms, cal_state, current_offset, led_state
-        FROM device_state WHERE device_id = ?
-    """, (device_id,))
-    row = cursor.fetchone()
-    conn.close()
+    row = get_device_state(device_id)
 
     if not row:
         return DeviceStatusResponse(
@@ -168,65 +173,53 @@ async def ingest_telemetry(
     token: str = Depends(verify_device_token)
 ):
     now_iso = datetime.now(timezone.utc).isoformat()
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Handling Duplicate / Out-of-Order timestamps deliberately:
-    # Query max sequence number for this device and timestamp
-    cursor.execute("""
-        SELECT COALESCE(MAX(sequence_num), -1) AS max_seq
-        FROM readings
-        WHERE device_id = ? AND timestamp_ms = ?
-    """, (payload.device_id, payload.timestamp_ms))
-    row = cursor.fetchone()
-    seq_num = row["max_seq"] + 1
-
-    # Insert reading record
     residual_abs = abs(payload.residual)
-    cursor.execute("""
-        INSERT INTO readings (
-            device_id, timestamp_ms, received_at, sensor_raw, reference_raw,
-            offset, sensor_corrected, residual, residual_abs,
-            cal_state, cal_result, led_state, sequence_num
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        payload.device_id, payload.timestamp_ms, now_iso, payload.sensor_raw, payload.reference_raw,
-        payload.offset, payload.sensor_corrected, payload.residual, residual_abs,
-        payload.cal_state, payload.cal_result, payload.led_state, seq_num
-    ))
-    reading_id = cursor.lastrowid
+
+    # Insert reading record via database abstraction (SQLite + Firebase)
+    reading_data = {
+        "device_id": payload.device_id,
+        "timestamp_ms": payload.timestamp_ms,
+        "received_at": now_iso,
+        "sensor_raw": payload.sensor_raw,
+        "reference_raw": payload.reference_raw,
+        "offset": payload.offset,
+        "sensor_corrected": payload.sensor_corrected,
+        "residual": payload.residual,
+        "residual_abs": residual_abs,
+        "cal_state": payload.cal_state,
+        "cal_result": payload.cal_result,
+        "led_state": payload.led_state
+    }
+    reading_id, seq_num = insert_reading(reading_data)
 
     # If an embedded calibration event occurred, persist it
     if payload.calibration_event:
         ce = payload.calibration_event
-        cursor.execute("""
-            INSERT INTO calibration_events (
-                device_id, event_type, timestamp_ms, received_at,
-                old_offset, new_offset, residual_avg, residual_spread, status, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            payload.device_id, ce.event_type, payload.timestamp_ms, now_iso,
-            ce.old_offset, ce.new_offset, ce.residual_avg, ce.residual_spread, ce.status, ce.notes
-        ))
+        event_data = {
+            "device_id": payload.device_id,
+            "event_type": ce.event_type,
+            "timestamp_ms": payload.timestamp_ms,
+            "received_at": now_iso,
+            "old_offset": ce.old_offset,
+            "new_offset": ce.new_offset,
+            "residual_avg": ce.residual_avg,
+            "residual_spread": ce.residual_spread,
+            "status": ce.status,
+            "notes": ce.notes
+        }
+        insert_calibration_event(event_data)
 
     # Update or insert device_state
-    cursor.execute("""
-        INSERT INTO device_state (
-            device_id, registered_at, last_seen, last_timestamp_ms, cal_state, current_offset, led_state
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(device_id) DO UPDATE SET
-            last_seen = excluded.last_seen,
-            last_timestamp_ms = excluded.last_timestamp_ms,
-            cal_state = excluded.cal_state,
-            current_offset = excluded.current_offset,
-            led_state = excluded.led_state
-    """, (
-        payload.device_id, now_iso, now_iso, payload.timestamp_ms,
-        payload.cal_state, payload.offset, payload.led_state
-    ))
-
-    conn.commit()
-    conn.close()
+    device_data = {
+        "device_id": payload.device_id,
+        "registered_at": now_iso,
+        "last_seen": now_iso,
+        "last_timestamp_ms": payload.timestamp_ms,
+        "cal_state": payload.cal_state,
+        "current_offset": payload.offset,
+        "led_state": payload.led_state
+    }
+    upsert_device_state(device_data)
 
     # Broadcast live update to all connected WebSocket clients
     broadcast_data = {
@@ -275,33 +268,7 @@ def get_readings_history(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=500)
 ):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    query = "SELECT * FROM readings WHERE device_id = ?"
-    params: List[any] = [device_id]
-
-    if start_time:
-        query += " AND received_at >= ?"
-        params.append(start_time)
-    if end_time:
-        query += " AND received_at <= ?"
-        params.append(end_time)
-
-    # Count total matching rows
-    count_query = query.replace("SELECT *", "SELECT COUNT(*)", 1)
-    cursor.execute(count_query, params)
-    total_count = cursor.fetchone()[0]
-
-    # Order by received_at descending (latest first)
-    query += " ORDER BY received_at DESC LIMIT ? OFFSET ?"
-    offset = (page - 1) * limit
-    params.extend([limit, offset])
-
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-
+    total_count, rows = db_get_readings_history(device_id, start_time, end_time, page, limit)
     items = [
         ReadingItem(
             id=r["id"],
@@ -336,21 +303,7 @@ def get_calibration_events(
     device_id: str = DEVICE_ID,
     limit: int = Query(50, ge=1, le=200)
 ):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM calibration_events WHERE device_id = ?", (device_id,))
-    total_count = cursor.fetchone()[0]
-
-    cursor.execute("""
-        SELECT * FROM calibration_events 
-        WHERE device_id = ? 
-        ORDER BY received_at DESC 
-        LIMIT ?
-    """, (device_id, limit))
-    rows = cursor.fetchall()
-    conn.close()
-
+    total_count, rows = db_get_calibration_events(device_id, limit)
     items = [
         CalibrationEventItem(
             id=r["id"],
@@ -374,17 +327,7 @@ def get_calibration_events(
 # ----------------------------------------------------
 @app.get("/api/v1/export/readings.csv", tags=["Export"])
 def export_readings_csv(device_id: str = DEVICE_ID):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, device_id, timestamp_ms, received_at, sensor_raw, reference_raw,
-               offset, sensor_corrected, residual, residual_abs, cal_state, cal_result, led_state
-        FROM readings
-        WHERE device_id = ?
-        ORDER BY timestamp_ms ASC
-    """, (device_id,))
-    rows = cursor.fetchall()
-    conn.close()
+    rows = db_export_readings(device_id)
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -411,17 +354,7 @@ def export_readings_csv(device_id: str = DEVICE_ID):
 
 @app.get("/api/v1/export/calibration-events.csv", tags=["Export"])
 def export_calibration_events_csv(device_id: str = DEVICE_ID):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT id, device_id, event_type, timestamp_ms, received_at,
-               old_offset, new_offset, residual_avg, residual_spread, status, notes
-        FROM calibration_events
-        WHERE device_id = ?
-        ORDER BY timestamp_ms ASC
-    """, (device_id,))
-    rows = cursor.fetchall()
-    conn.close()
+    rows = db_export_calibration_events(device_id)
 
     output = io.StringIO()
     writer = csv.writer(output)
