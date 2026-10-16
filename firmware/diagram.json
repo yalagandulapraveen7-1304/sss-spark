@@ -1,64 +1,26 @@
 {
   "version": 1,
-  "author": "Park-Assist Educational Sensor System",
+  "author": "Anonymous maker",
   "editor": "wokwi",
   "parts": [
-    {
-      "type": "board-esp32-devkit-c-v4",
-      "id": "esp",
-      "top": 0,
-      "left": 0,
-      "attrs": {}
-    },
-    {
-      "type": "wokwi-potentiometer",
-      "id": "pot_sensor",
-      "top": -110,
-      "left": 280,
-      "attrs": {
-        "value": "550"
-      }
-    },
-    {
-      "type": "wokwi-potentiometer",
-      "id": "pot_ref",
-      "top": 100,
-      "left": 280,
-      "attrs": {
-        "value": "500"
-      }
-    },
-    {
-      "type": "wokwi-led",
-      "id": "led_green",
-      "top": 230,
-      "left": 280,
-      "attrs": {
-        "color": "green",
-        "label": "0 Error (Green)"
-      }
-    },
-    {
-      "type": "wokwi-resistor",
-      "id": "r_green",
-      "top": 285,
-      "left": 280,
-      "rotate": 90,
-      "attrs": {
-        "value": "220"
-      }
-    }
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "pot_sensor", "top": -120, "left": -120, "attrs": {} },
+    { "type": "wokwi-potentiometer", "id": "pot_ref", "top": 120, "left": -120, "attrs": {} },
+    { "type": "wokwi-led", "id": "led1", "top": -80, "left": 150, "attrs": { "color": "red" } },
+    { "type": "wokwi-resistor", "id": "r1", "top": -30, "left": 150, "attrs": { "value": "220" } }
   ],
   "connections": [
-    [ "esp:3V3", "pot_sensor:VCC", "red", [] ],
-    [ "esp:GND.1", "pot_sensor:GND", "black", [] ],
-    [ "esp:34", "pot_sensor:SIG", "green", [] ],
-    [ "esp:3V3", "pot_ref:VCC", "red", [] ],
-    [ "esp:GND.1", "pot_ref:GND", "black", [] ],
-    [ "esp:35", "pot_ref:SIG", "blue", [] ],
-    [ "esp:25", "led_green:A", "green", [] ],
-    [ "led_green:C", "r_green:1", "green", [] ],
-    [ "r_green:2", "esp:GND.2", "black", [] ]
+    [ "esp:TX", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX", "$serialMonitor:TX", "", [] ],
+    [ "pot_sensor:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "pot_sensor:GND", "esp:GND.1", "black", [ "v0" ] ],
+    [ "pot_sensor:SIG", "esp:34", "green", [ "v0" ] ],
+    [ "pot_ref:VCC", "esp:3V3", "red", [ "v0" ] ],
+    [ "pot_ref:GND", "esp:GND.1", "black", [ "v0" ] ],
+    [ "pot_ref:SIG", "esp:35", "blue", [ "v0" ] ],
+    [ "esp:25", "led1:A", "orange", [ "v0" ] ],
+    [ "led1:C", "r1:1", "black", [ "v0" ] ],
+    [ "r1:2", "esp:GND.2", "black", [ "v0" ] ]
   ],
   "dependencies": {}
 }

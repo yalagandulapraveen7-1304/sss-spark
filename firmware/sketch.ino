@@ -1,237 +1,199 @@
-/*
-  PROJECT: ESP32 SELF-CALIBRATING PARK-ASSIST SENSOR EDUCATIONAL MODEL
-  PLATFORM: ESP32 DevKit V4 + Wokwi Simulation
-
-  HARDWARE MAPPING:
-  - GPIO 34: Sensor Potentiometer (ADC1_CH6, 0-100 scale)
-  - GPIO 35: Reference Potentiometer (ADC1_CH7, 0-100 scale)
-  - GPIO 25: Calibration / 0-Error Status LED (Green)
-
-  ALGORITHM SPECIFICATION:
-  - Startup Calibration: 16 paired sensor & reference samples
-  - Initial Offset: avg(sensor) - avg(reference)
-  - Corrected Value: sensor - offset
-  - Signed Residual: corrected - reference
-  - Drift Threshold: |residual| > 3.0
-  - Persistence Check: 16 consecutive samples with |residual| > 3.0
-  - Stability Condition: peak-to-peak spread (max - min) <= 1.0
-  - Dynamic Adaptation: if stable, offset += mean(residual)
-  - Plausibility Check: if spread > 1.0 or |new_offset| > 50.0, reject & retain previous offset
-*/
+#include <Arduino.h>
+#include <math.h>
 
 const int PIN_SENSOR = 34;
-const int PIN_REFERENCE = 35;
-const int PIN_LED_GREEN = 25;
+const int PIN_REF = 35;
+const int PIN_LED = 25;
 
-const char* DEVICE_ID = "esp32-park-01";
-const int PROTOCOL_VERSION = 1;
+const int N = 16;
+const float MAX_ALLOWED_OFFSET = 25.0f;
+const float MAX_ALLOWED_VARIANCE = 4.0f;
+const float DRIFT_THRESHOLD = 3.0f;
 
-// Sampling & Calibration Constants
-const int CALIBRATION_SAMPLES = 16;
-const unsigned long SAMPLE_INTERVAL_MS = 200;
-const float DRIFT_THRESHOLD = 3.0;
-const float SPREAD_STABILITY_LIMIT = 1.0;
-const float MAX_PLAUSIBLE_OFFSET = 50.0;
-const float ZERO_ERROR_TOLERANCE = 1.0;
+// Residuals count as approximately constant if their spread is within this
+// peak-to-peak range, in the same 0–100 units as readChannel().
+const float RESIDUAL_STABILITY_TOLERANCE = 1.0f;
 
-// System State Variables
-float calibrationOffset = 0.0;
-bool isCalibrated = false;
-unsigned long lastSampleTime = 0;
+float offset_b = 0.0f;
+bool calibrated = false;
 
-// Persistent Residual Ring Buffer
-float residualBuffer[16];
-int persistentDriftCount = 0;
+float residual_samples[N];
+int residual_count = 0;
 
-// Convert 12-bit ADC (0-4095) to 0-100 Normalized Scale
-float readNormalizedInput(int pin) {
-  int rawADC = analogRead(pin);
-  return ((float)rawADC * 100.0) / 4095.0;
+float readChannel(int pin) {
+  return (analogRead(pin) / 4095.0f) * 100.0f;
 }
 
-// --------------------------------------------------
-// STARTUP CALIBRATION ROUTINE
-// --------------------------------------------------
-void calibrateStartup() {
-  Serial.println("# [ParkAssist] Reverse gear engaged: Starting 16-sample baseline calibration...");
-  digitalWrite(PIN_LED_GREEN, LOW);
+float computeVariance(const float samples[], float mean, int count) {
+  float sum_sq = 0.0f;
 
-  float sumSensor = 0.0;
-  float sumRef = 0.0;
-
-  for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-    float s = readNormalizedInput(PIN_SENSOR);
-    float r = readNormalizedInput(PIN_REFERENCE);
-    sumSensor += s;
-    sumRef += r;
-    delay(50); // 16 * 50ms = 800ms calibration window
+  for (int i = 0; i < count; i++) {
+    float diff = samples[i] - mean;
+    sum_sq += diff * diff;
   }
 
-  float avgSensor = sumSensor / (float)CALIBRATION_SAMPLES;
-  float avgRef = sumRef / (float)CALIBRATION_SAMPLES;
-
-  calibrationOffset = avgSensor - avgRef;
-  isCalibrated = true;
-  persistentDriftCount = 0;
-
-  Serial.print("# [ParkAssist] Baseline Offset Computed: ");
-  Serial.println(calibrationOffset, 2);
-
-  // Emit Initial Startup Calibration Event JSON
-  Serial.print("{\"version\":1,\"device_id\":\"");
-  Serial.print(DEVICE_ID);
-  Serial.print("\",\"timestamp_ms\":");
-  Serial.print(millis());
-  Serial.print(",\"sensor_raw\":");
-  Serial.print(avgSensor, 2);
-  Serial.print(",\"reference_raw\":");
-  Serial.print(avgRef, 2);
-  Serial.print(",\"offset\":");
-  Serial.print(calibrationOffset, 2);
-  Serial.print(",\"sensor_corrected\":");
-  Serial.print(avgSensor - calibrationOffset, 2);
-  Serial.print(",\"residual\":0.00,\"cal_state\":\"CALIBRATED\",\"cal_result\":\"STABLE\",\"led_state\":1,");
-  Serial.print("\"calibration_event\":{\"event_type\":\"INITIAL_STARTUP\",\"old_offset\":0.00,\"new_offset\":");
-  Serial.print(calibrationOffset, 2);
-  Serial.print(",\"residual_avg\":0.00,\"residual_spread\":0.20,\"status\":\"PASSED\",\"notes\":\"Startup 16-sample baseline completed.\"}");
-  Serial.println("}");
-
-  digitalWrite(PIN_LED_GREEN, HIGH);
+  return sum_sq / count;
 }
 
-// --------------------------------------------------
-// SETUP
-// --------------------------------------------------
+void resetResidualCheck() {
+  residual_count = 0;
+}
+
+bool calibrate() {
+  digitalWrite(PIN_LED, HIGH);
+
+  float s_samples[N];
+  float r_samples[N];
+  float sum_s = 0.0f;
+  float sum_r = 0.0f;
+
+  // Collect 16 sensor/reference pairs.
+  for (int i = 0; i < N; i++) {
+    s_samples[i] = readChannel(PIN_SENSOR);
+    r_samples[i] = readChannel(PIN_REF);
+    sum_s += s_samples[i];
+    sum_r += r_samples[i];
+    delay(5);
+  }
+
+  float mean_s = sum_s / N;
+  float mean_r = sum_r / N;
+
+  float var_s = computeVariance(s_samples, mean_s, N);
+  float var_r = computeVariance(r_samples, mean_r, N);
+
+  if (var_s > MAX_ALLOWED_VARIANCE ||
+      var_r > MAX_ALLOWED_VARIANCE) {
+    Serial.printf(
+      "[warning] Stability check failed: var_sensor=%.2f, "
+      "var_ref=%.2f. Keeping previous correction.\n",
+      var_s, var_r
+    );
+    digitalWrite(PIN_LED, LOW);
+    return false;
+  }
+
+  float candidate_offset = mean_s - mean_r;
+
+  if (fabsf(candidate_offset) > MAX_ALLOWED_OFFSET) {
+    Serial.printf(
+      "[alarm] Offset out of bounds: candidate=%.2f, limit=%.2f.\n",
+      candidate_offset, MAX_ALLOWED_OFFSET
+    );
+    digitalWrite(PIN_LED, LOW);
+    return false;
+  }
+
+  offset_b = candidate_offset;
+  calibrated = true;
+
+  Serial.printf(
+    "[success] Calibration complete: correction offset=%.2f\n",
+    offset_b
+  );
+
+  digitalWrite(PIN_LED, LOW);
+  return true;
+}
+
+// Record residuals above the threshold. Once 16 consecutive residuals are
+// stable, adjust offset_b by their average so the correction removes them.
+void checkAndCorrectStableResidual(float residual) {
+  if (fabsf(residual) <= DRIFT_THRESHOLD) {
+    resetResidualCheck();
+    return;
+  }
+
+  residual_samples[residual_count] = residual;
+  residual_count++;
+
+  Serial.printf(
+    "[residual] %.2f; stable readings %d/%d\n",
+    residual, residual_count, N
+  );
+
+  if (residual_count < N) {
+    return;
+  }
+
+  float min_residual = residual_samples[0];
+  float max_residual = residual_samples[0];
+  float sum_residual = 0.0f;
+
+  for (int i = 0; i < N; i++) {
+    if (residual_samples[i] < min_residual) {
+      min_residual = residual_samples[i];
+    }
+    if (residual_samples[i] > max_residual) {
+      max_residual = residual_samples[i];
+    }
+    sum_residual += residual_samples[i];
+  }
+
+  float residual_spread = max_residual - min_residual;
+
+  if (residual_spread <= RESIDUAL_STABILITY_TOLERANCE) {
+    float residual_mean = sum_residual / N;
+
+    // corrected = raw - offset_b; add the signed residual to the offset.
+    offset_b += residual_mean;
+
+    Serial.printf(
+      "[correction updated] stable residual=%.2f; new offset_b=%.2f\n",
+      residual_mean, offset_b
+    );
+
+    resetResidualCheck();
+  } else {
+    // Keep the latest 15 readings and wait for one more, so the system can
+    // still detect a stable run without starting over completely.
+    for (int i = 1; i < N; i++) {
+      residual_samples[i - 1] = residual_samples[i];
+    }
+    residual_count = N - 1;
+
+    Serial.printf(
+      "[residual] not stable yet; spread=%.2f, required <= %.2f\n",
+      residual_spread, RESIDUAL_STABILITY_TOLERANCE
+    );
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   analogReadResolution(12);
 
-  pinMode(PIN_SENSOR, INPUT);
-  pinMode(PIN_REFERENCE, INPUT);
-  pinMode(PIN_LED_GREEN, OUTPUT);
-  digitalWrite(PIN_LED_GREEN, LOW);
+  pinMode(PIN_LED, OUTPUT);
+  digitalWrite(PIN_LED, LOW);
 
-  delay(1000); // 1s stabilization pause
-
-  calibrateStartup();
-  lastSampleTime = millis();
+  Serial.println("Performing initial boot calibration...");
+  calibrate();
 }
 
-// --------------------------------------------------
-// MAIN LOOP
-// --------------------------------------------------
 void loop() {
-  // Allow manual recalibration trigger via serial monitor ('c' or 'C')
-  if (Serial.available()) {
-    char c = Serial.read();
-    if (c == 'c' || c == 'C') {
-      calibrateStartup();
-      lastSampleTime = millis();
-    }
+  float raw = readChannel(PIN_SENSOR);
+  float ref = readChannel(PIN_REF);
+
+  if (!calibrated) {
+    Serial.println("[warning] Not calibrated; retrying calibration.");
+    calibrate();
+    delay(200);
+    return;
   }
 
-  unsigned long currentTime = millis();
-  if (currentTime - lastSampleTime >= SAMPLE_INTERVAL_MS) {
-    lastSampleTime = currentTime;
+  float corrected = raw - offset_b;
+  float signed_residual = corrected - ref;
 
-    float sensorRaw = readNormalizedInput(PIN_SENSOR);
-    float refRaw = readNormalizedInput(PIN_REFERENCE);
+  checkAndCorrectStableResidual(signed_residual);
 
-    // 1. Correct sensor using current offset
-    float sensorCorrected = sensorRaw - calibrationOffset;
+  // Show readings using the current correction value.
+  corrected = raw - offset_b;
+  signed_residual = corrected - ref;
 
-    // 2. Compute signed residual
-    float residual = sensorCorrected - refRaw;
-    float residualAbs = abs(residual);
+  Serial.printf(
+    "raw=%.2f ref=%.2f offset_b=%.2f corrected=%.2f residual=%.2f\n",
+    raw, ref, offset_b, corrected, signed_residual
+  );
 
-    // 3. LED Indicator: Glows GREEN when residual is 0 (within +/- 1.0 count)
-    bool isZeroError = (residualAbs <= ZERO_ERROR_TOLERANCE);
-    digitalWrite(PIN_LED_GREEN, isZeroError ? HIGH : LOW);
-
-    String calResult = "STABLE";
-    bool emitEvent = false;
-    String eventJson = "";
-
-    // 4. Persistence & Stability Monitoring
-    if (residualAbs > DRIFT_THRESHOLD) {
-      // Store into 16-sample buffer
-      residualBuffer[persistentDriftCount % 16] = residual;
-      persistentDriftCount++;
-      calResult = "DRIFT_DETECTED";
-
-      // When 16 consecutive above-threshold readings accumulate:
-      if (persistentDriftCount >= 16) {
-        float minRes = residualBuffer[0];
-        float maxRes = residualBuffer[0];
-        float sumRes = 0.0;
-
-        for (int i = 0; i < 16; i++) {
-          float val = residualBuffer[i];
-          sumRes += val;
-          if (val < minRes) minRes = val;
-          if (val > maxRes) maxRes = val;
-        }
-
-        float spread = maxRes - minRes;
-        float meanRes = sumRes / 16.0;
-        float candidateOffset = calibrationOffset + meanRes;
-
-        // Stability check: spread <= 1.0 AND plausibility check: |candidate| <= 50.0
-        if (spread <= SPREAD_STABILITY_LIMIT && abs(candidateOffset) <= MAX_PLAUSIBLE_OFFSET) {
-          float oldOffset = calibrationOffset;
-          calibrationOffset = candidateOffset;
-          calResult = "ADAPTATION_APPLIED";
-          emitEvent = true;
-
-          // Recompute corrected reading with new offset
-          sensorCorrected = sensorRaw - calibrationOffset;
-          residual = sensorCorrected - refRaw;
-
-          eventJson = String(",\"calibration_event\":{\"event_type\":\"DYNAMIC_ADAPTATION\",\"old_offset\":") +
-                      String(oldOffset, 2) + ",\"new_offset\":" + String(calibrationOffset, 2) +
-                      ",\"residual_avg\":" + String(meanRes, 2) + ",\"residual_spread\":" + String(spread, 2) +
-                      ",\"status\":\"PASSED\",\"notes\":\"16 persistent stable samples. Offset adapted.\"}";
-        } else {
-          // Rejection: either unstable noise or implausible offset
-          calResult = (spread > SPREAD_STABILITY_LIMIT) ? "REJECTED_INSTABILITY" : "REJECTED_IMPLAUSIBLE";
-          emitEvent = true;
-
-          eventJson = String(",\"calibration_event\":{\"event_type\":\"DYNAMIC_ADAPTATION\",\"old_offset\":") +
-                      String(calibrationOffset, 2) + ",\"new_offset\":" + String(calibrationOffset, 2) +
-                      ",\"residual_avg\":" + String(meanRes, 2) + ",\"residual_spread\":" + String(spread, 2) +
-                      ",\"status\":\"" + calResult + "\",\"notes\":\"Spread " + String(spread, 2) + " exceeded limit. Offset retained.\"}";
-        }
-
-        // Reset persistent counter
-        persistentDriftCount = 0;
-      }
-    } else {
-      // Residual is within normal threshold: reset counter
-      persistentDriftCount = 0;
-    }
-
-    // 5. Output Machine-Readable JSON Line
-    Serial.print("{\"version\":1,\"device_id\":\"");
-    Serial.print(DEVICE_ID);
-    Serial.print("\",\"timestamp_ms\":");
-    Serial.print(currentTime);
-    Serial.print(",\"sensor_raw\":");
-    Serial.print(sensorRaw, 2);
-    Serial.print(",\"reference_raw\":");
-    Serial.print(refRaw, 2);
-    Serial.print(",\"offset\":");
-    Serial.print(calibrationOffset, 2);
-    Serial.print(",\"sensor_corrected\":");
-    Serial.print(sensorCorrected, 2);
-    Serial.print(",\"residual\":");
-    Serial.print(residual, 2);
-    Serial.print(",\"cal_state\":\"CALIBRATED\",\"cal_result\":\"");
-    Serial.print(calResult);
-    Serial.print("\",\"led_state\":");
-    Serial.print(isZeroError ? 1 : 0);
-    if (emitEvent) {
-      Serial.print(eventJson);
-    }
-    Serial.println("}");
-  }
+  delay(200);
 }

@@ -28,12 +28,41 @@ DEFAULT_BAUD_RATE = int(os.getenv("BAUD_RATE", "115200"))
 DEFAULT_SERIAL_PORT = os.getenv("SERIAL_PORT", "COM3")
 
 def post_payload(backend_url: str, token: str, payload_str: str) -> bool:
-    """Validate JSON and POST to FastAPI ingestion endpoint."""
-    try:
-        data = json.loads(payload_str)
-    except json.JSONDecodeError:
-        # Silently skip non-JSON diagnostic lines
+    """Validate JSON or key-value format and POST to FastAPI ingestion endpoint."""
+    import re
+    trimmed = payload_str.strip()
+    if not trimmed or trimmed.startswith("#") or trimmed.startswith("[") or trimmed.startswith("Performing"):
         return False
+
+    if "raw=" in trimmed and "ref=" in trimmed and ("offset_b=" in trimmed or "offset=" in trimmed):
+        m_raw = re.search(r"raw=([-\d.]+)", trimmed)
+        m_ref = re.search(r"ref=([-\d.]+)", trimmed)
+        m_off = re.search(r"offset_b=([-\d.]+)", trimmed) or re.search(r"offset=([-\d.]+)", trimmed)
+        m_cor = re.search(r"corrected=([-\d.]+)", trimmed)
+        m_res = re.search(r"residual=([-\d.]+)", trimmed)
+        if m_raw and m_ref and m_off and m_cor and m_res:
+            res_val = float(m_res.group(1))
+            data = {
+                "version": 1,
+                "device_id": "esp32-park-01",
+                "timestamp_ms": int(time.time() * 1000),
+                "sensor_raw": float(m_raw.group(1)),
+                "reference_raw": float(m_ref.group(1)),
+                "offset": float(m_off.group(1)),
+                "sensor_corrected": float(m_cor.group(1)),
+                "residual": res_val,
+                "cal_state": "CALIBRATED",
+                "cal_result": "STABLE",
+                "led_state": 1 if abs(res_val) <= 1.0 else 0
+            }
+            payload_str = json.dumps(data)
+        else:
+            return False
+    else:
+        try:
+            data = json.loads(payload_str)
+        except json.JSONDecodeError:
+            return False
 
     # Check for minimal required schema fields
     if "version" not in data or "device_id" not in data or "sensor_raw" not in data:
