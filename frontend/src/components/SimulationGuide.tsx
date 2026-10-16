@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Sliders, AlertCircle, Compass, Cpu } from 'lucide-react';
+import { X, Sliders, AlertCircle, Compass, Cpu, ExternalLink } from 'lucide-react';
 
 interface SimulationGuideProps {
   isOpen: boolean;
@@ -120,7 +120,17 @@ export const SimulationGuide: React.FC<SimulationGuideProps> = ({ isOpen, onClos
           </div>
         </div>
 
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <a
+            href="https://wokwi.com/projects/new/esp32"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-outline"
+            style={{ borderColor: "#f59e0b", color: "#f59e0b", display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+          >
+            <ExternalLink size={16} />
+            <span>Open Wokwi Circuit Simulator ↗</span>
+          </a>
           <button onClick={onClose} className="btn btn-primary">Got it, Let's Test!</button>
         </div>
       </div>

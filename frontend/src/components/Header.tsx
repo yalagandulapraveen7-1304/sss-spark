@@ -1,5 +1,5 @@
 import React from 'react';
-import { Wifi, WifiOff, Download, HelpCircle, Activity, Box, LayoutDashboard } from 'lucide-react';
+import { Wifi, WifiOff, Download, HelpCircle, Activity, Box, LayoutDashboard, ExternalLink } from 'lucide-react';
 import { getExportReadingsUrl, getExportCalibrationEventsUrl } from '../api';
 
 interface HeaderProps {
@@ -64,6 +64,18 @@ export const Header: React.FC<HeaderProps> = ({
         <a href={getExportCalibrationEventsUrl()} download className="btn btn-outline" title="Export calibration history as CSV">
           <Download size={15} />
           <span>Events CSV</span>
+        </a>
+
+        <a
+          href="https://wokwi.com/projects/new/esp32"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-outline"
+          style={{ borderColor: "#f59e0b", color: "#f59e0b" }}
+          title="Open interactive Wokwi circuit simulator in separate tab"
+        >
+          <ExternalLink size={15} />
+          <span>Open Wokwi Simulation</span>
         </a>
 
         <button onClick={onOpenGuide} className="btn btn-primary" title="View simulation guide & potentiometer mapping">
