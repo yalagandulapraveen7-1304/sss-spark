@@ -70,10 +70,12 @@ park-assist-sensor-system/
 ├── frontend/                 # React + TypeScript + Vite dashboard
 │   ├── src/
 │   │   ├── components/       # StatusCard, Visualizer, Chart, Tables, Modals
+│   │   │   └── three/        # 3D Park-Assist Scene (R3F) & Interactive Simulator Viewport
+│   │   ├── types/            # Shared TypeScript interfaces & 3D simulator types
 │   │   ├── api.ts            # REST & WebSocket client
-│   │   ├── types.ts          # Shared TypeScript interfaces
-│   │   ├── App.tsx           # Main dashboard coordinator
-│   │   └── index.css         # Automotive ADAS theme styling
+│   │   ├── types.ts          # Core telemetry interfaces
+│   │   ├── App.tsx           # Dual-mode view coordinator (Telemetry & 3D Twin)
+│   │   └── index.css         # Automotive ADAS theme & 3D viewport styling
 │   ├── package.json
 │   └── vite.config.ts
 └── README.md
@@ -105,7 +107,44 @@ park-assist-sensor-system/
 
 ---
 
-## 4. Setup and Run Instructions (Windows PowerShell)
+## 4. 3D Park Assist Simulator (Interactive Digital Twin)
+
+The web application integrates a real-time **3D Reverse-Parking Digital Twin** powered by **React Three Fiber (Three.js)**. Users can switch between the **Telemetry Dashboard** and the **3D Simulator Twin** with a single click in the top navigation bar.
+
+```
+       +--------------------------------------------------------------+
+       |           WEB APPLICATION DUAL-MODE VIEW COORDINATOR         |
+       |                                                              |
+       |   [ Telemetry Dashboard ]     <--->     [ 3D Simulator Twin ]|
+       +-------------------------------+------------------------------+
+                                       |
+                   +-------------------+-------------------+
+                   v                                       v
+         [ Live Telemetry Stream ]               [ 3D Three.js Scene ]
+         - Sensor / Ref readings                 - 3D Vehicle & Bumper
+         - Residual & Offset                     - 3 Transducers (A, B, C)
+         - Cal state & drift status              - Dynamic Acoustic Cones
+         - Hardware LED State                    - Concrete Wall & Markings
+```
+
+### Key Features of the 3D Twin:
+1. **Physical Vehicle & Acoustic Transducer Model:**
+   - 3D vehicle chassis with windshield, wheels, headlights, and red taillights.
+   - Rear bumper housing **3 ultrasonic transducers** ($A$: Left Corner, $B$: Center, $C$: Right Corner).
+   - Dynamic acoustic cones that pulsate and project range visualization toward the obstacle.
+2. **Telemetry Hardware Coupling:**
+   - **Center Transducer ($B$):** Directly coupled to the live ESP32 potentiometer reading ($0\text{--}100$ scale normalized to distance in cm).
+   - **Green ADAS Status LED:** Reflected on the 3D vehicle cluster when the ESP32 GPIO 25 LED is illuminated.
+   - **Transducer Status Badges:** Display current distance, operational status (`OK`, `CALIBRATING`, `DRIFT_DETECTED`, `ERROR`), and active cone indicators.
+3. **Interactive Simulation Controls:**
+   - **Keyboard Navigation:** Use `Arrow Down` to reverse closer to the wall, `Arrow Up` to pull forward, and `Space` to toggle reverse/drive gear.
+   - **Distance Slider:** Interactively adjust obstacle distance from $20\text{ cm}$ (critical collision threshold) up to $250\text{ cm}$.
+   - **Camera View Presets:** One-click camera buttons for **Isometric Orbit**, **Rear Parking View**, **Top-Down Ortho View**, and **Reset Camera**.
+   - **Safety Warnings:** Prominent ISO 17386 disclaimer explaining that potentiometer ADC inputs represent normalized simulation data rather than physical ultrasonic time-of-flight measurements.
+
+---
+
+## 5. Setup and Run Instructions (Windows PowerShell)
 
 ### Step 1: Start the Backend Service
 Open a PowerShell terminal:
@@ -180,7 +219,7 @@ python bridge/serial_bridge.py --tcp 127.0.0.1:4000
 
 ---
 
-## 5. Sample Valid Message & Direct Ingestion Command
+## 6. Sample Valid Message & Direct Ingestion Command
 
 ### Sample JSON Telemetry Line
 ```json
@@ -225,7 +264,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/v1/telemetry" -Method Post -He
 
 ---
 
-## 6. CSV Export Instructions
+## 7. CSV Export Instructions
 
 You can export stored data at any time:
 1. **Via Dashboard UI:** Click the **Readings CSV** or **Events CSV** buttons in the dashboard header.
@@ -240,7 +279,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:8000/api/v1/export/calibration-events.c
 
 ---
 
-## 7. Known Limitations & Next Steps toward Production ADAS
+## 8. Known Limitations & Next Steps toward Production ADAS
 
 | Feature | Educational Prototype | Production Automotive Park-Assist |
 | :--- | :--- | :--- |

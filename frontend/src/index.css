@@ -897,3 +897,281 @@ body {
   .header-container { flex-direction: column; align-items: flex-start; }
   .pot-mapping-cards { grid-template-columns: 1fr; }
 }
+
+/* ========================================================
+   3D SIMULATOR TWIN & VIEW SWITCHER STYLES
+   ======================================================== */
+
+/* Navigation View Switcher Tabs */
+.view-switcher-tabs {
+  display: flex;
+  align-items: center;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 4px;
+}
+
+.nav-tab-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.nav-tab-btn:hover {
+  color: #ffffff;
+}
+
+.nav-tab-btn.active-tab {
+  background: var(--bg-hover);
+  color: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+/* 3D Simulator Layout */
+.three-simulator-container {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 20px;
+}
+
+@media (max-width: 1024px) {
+  .three-simulator-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.three-scene-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.three-camera-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.three-canvas-viewport {
+  position: relative;
+  width: 100%;
+  height: 58vh;
+  min-height: 420px;
+  background-color: #0d1117;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.floating-distance-overlay {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  pointer-events: none;
+  z-index: 10;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  padding: 10px 14px;
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.overlay-label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.overlay-val {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.overlay-sub {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.backend-reported-pill {
+  margin-top: 6px;
+  font-size: 0.72rem;
+  background: rgba(6, 182, 212, 0.2);
+  color: var(--accent-cyan);
+  border: 1px solid var(--accent-cyan);
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Drei HTML In-Canvas labels */
+.scene-label {
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+.scene-label-k {
+  color: var(--accent-cyan);
+  font-weight: 700;
+}
+.scene-label-sub {
+  color: var(--accent-amber);
+  font-size: 0.68rem;
+}
+.scene-tick {
+  color: #94a3b8;
+  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* 3D Controls Bar */
+.three-controls-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.slider-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.distance-range-slider {
+  width: 100%;
+  accent-color: var(--accent-blue);
+  cursor: pointer;
+}
+
+.slider-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.motion-buttons-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 3D Side Panel */
+.three-side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.mapping-metrics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mapping-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.8rem;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.mapping-label {
+  color: var(--text-secondary);
+}
+
+.transducers-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.transducer-chip {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.highlight-chip {
+  border-color: var(--accent-blue);
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.chip-id {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.chip-angle {
+  color: var(--text-muted);
+}
+
+.chip-status {
+  font-weight: 600;
+}
+
+.educational-note {
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.webgl-loading, .webgl-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  padding: 24px;
+  text-align: center;
+}
+
+.spin-loader {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(59, 130, 246, 0.2);
+  border-top-color: var(--accent-blue);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}

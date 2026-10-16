@@ -8,6 +8,7 @@ import { CalibrationHistoryTable } from './components/CalibrationHistoryTable';
 import { DataTable } from './components/DataTable';
 import { Glossary } from './components/Glossary';
 import { SimulationGuide } from './components/SimulationGuide';
+import { ThreeDSimulator } from './components/three/ThreeDSimulator';
 
 import {
   fetchDeviceStatus,
@@ -25,6 +26,7 @@ export const App: React.FC = () => {
   const [historyTotal, setHistoryTotal] = useState<number>(0);
   const [filter, setFilter] = useState<HistoryFilter>({ page: 1, limit: 10 });
 
+  const [currentTab, setCurrentTab] = useState<'dashboard' | '3d-simulator'>('dashboard');
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const [isGlossaryOpen, setIsGlossaryOpen] = useState<boolean>(false);
   const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
@@ -134,37 +136,50 @@ export const App: React.FC = () => {
         </span>
       </div>
 
-      {/* Main Header */}
+      {/* Main Header with View Switcher */}
       <Header
         wsConnected={wsConnected}
+        currentTab={currentTab}
+        onTabChange={setCurrentTab}
         onOpenGuide={() => setIsGuideOpen(true)}
         onOpenGlossary={() => setIsGlossaryOpen(true)}
       />
 
       <main className="main-content">
-        {/* Top: Controller Status Summary */}
-        <StatusCard status={deviceStatus} latestReading={latestReading} />
+        {currentTab === 'dashboard' ? (
+          <>
+            {/* Top: Controller Status Summary */}
+            <StatusCard status={deviceStatus} latestReading={latestReading} />
 
-        {/* Center: Interactive Parking Visualizer */}
-        <ParkingBumperVisualizer reading={latestReading} />
+            {/* Center: Interactive Parking Visualizer */}
+            <ParkingBumperVisualizer reading={latestReading} />
 
-        {/* Live Metric Readout Cards */}
-        <LiveReadingsPanel reading={latestReading} />
+            {/* Live Metric Readout Cards */}
+            <LiveReadingsPanel reading={latestReading} />
 
-        {/* Rolling Time-Series Dual Chart */}
-        <LiveChart readings={liveReadings} />
+            {/* Rolling Time-Series Dual Chart */}
+            <LiveChart readings={liveReadings} />
 
-        {/* Calibration & Adaptation History Table */}
-        <CalibrationHistoryTable events={calibrationEvents} />
+            {/* Calibration & Adaptation History Table */}
+            <CalibrationHistoryTable events={calibrationEvents} />
 
-        {/* Persistent Telemetry Log & Filter Table */}
-        <DataTable
-          readings={historyReadings}
-          totalCount={historyTotal}
-          filter={filter}
-          onFilterChange={setFilter}
-          onRefresh={refreshHistory}
-        />
+            {/* Persistent Telemetry Log & Filter Table */}
+            <DataTable
+              readings={historyReadings}
+              totalCount={historyTotal}
+              filter={filter}
+              onFilterChange={setFilter}
+              onRefresh={refreshHistory}
+            />
+          </>
+        ) : (
+          /* 3D Digital Twin Simulation View */
+          <ThreeDSimulator
+            latestReading={latestReading}
+            deviceStatus={deviceStatus}
+            wsConnected={wsConnected}
+          />
+        )}
       </main>
 
       {/* Educational Modals */}
@@ -182,4 +197,3 @@ export const App: React.FC = () => {
 };
 
 export default App;
-
