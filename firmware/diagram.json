@@ -1,13 +1,15 @@
 {
   "version": 1,
-  "author": "Anonymous maker",
+  "author": "Antigravity Engineer",
   "editor": "wokwi",
   "parts": [
     { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
-    { "type": "wokwi-potentiometer", "id": "pot_sensor", "top": -120, "left": -120, "attrs": {} },
-    { "type": "wokwi-potentiometer", "id": "pot_ref", "top": 120, "left": -120, "attrs": {} },
-    { "type": "wokwi-led", "id": "led1", "top": -80, "left": 150, "attrs": { "color": "red" } },
-    { "type": "wokwi-resistor", "id": "r1", "top": -30, "left": 150, "attrs": { "value": "220" } }
+    { "type": "wokwi-potentiometer", "id": "pot_sensor", "top": -140, "left": -150, "attrs": { "label": "Sensor Pot (GPIO34)" } },
+    { "type": "wokwi-potentiometer", "id": "pot_ref", "top": 120, "left": -150, "attrs": { "label": "Reference Pot (GPIO35)" } },
+    { "type": "wokwi-led", "id": "led_cal", "top": -90, "left": 160, "attrs": { "color": "yellow", "label": "Cal (GPIO25)" } },
+    { "type": "wokwi-resistor", "id": "r_cal", "top": -40, "left": 160, "attrs": { "value": "220" } },
+    { "type": "wokwi-led", "id": "led_err", "top": 60, "left": 160, "attrs": { "color": "red", "label": "Error (GPIO26)" } },
+    { "type": "wokwi-resistor", "id": "r_err", "top": 110, "left": 160, "attrs": { "value": "220" } }
   ],
   "connections": [
     [ "esp:TX", "$serialMonitor:RX", "", [] ],
@@ -18,9 +20,12 @@
     [ "pot_ref:VCC", "esp:3V3", "red", [ "v0" ] ],
     [ "pot_ref:GND", "esp:GND.1", "black", [ "v0" ] ],
     [ "pot_ref:SIG", "esp:35", "blue", [ "v0" ] ],
-    [ "esp:25", "led1:A", "orange", [ "v0" ] ],
-    [ "led1:C", "r1:1", "black", [ "v0" ] ],
-    [ "r1:2", "esp:GND.2", "black", [ "v0" ] ]
+    [ "esp:25", "led_cal:A", "gold", [ "v0" ] ],
+    [ "led_cal:C", "r_cal:1", "black", [ "v0" ] ],
+    [ "r_cal:2", "esp:GND.2", "black", [ "v0" ] ],
+    [ "esp:26", "led_err:A", "orange", [ "v0" ] ],
+    [ "led_err:C", "r_err:1", "black", [ "v0" ] ],
+    [ "r_err:2", "esp:GND.2", "black", [ "v0" ] ]
   ],
   "dependencies": {}
 }

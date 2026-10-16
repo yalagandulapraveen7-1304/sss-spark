@@ -3,7 +3,8 @@
 
 const int PIN_SENSOR = 34;
 const int PIN_REF = 35;
-const int PIN_LED = 25;
+const int PIN_LED_CAL = 25;   // Yellow Calibration LED
+const int PIN_LED_ERR = 26;   // Red Residual Error LED
 
 const int N = 16;
 const float MAX_ALLOWED_OFFSET = 25.0f;
@@ -40,7 +41,7 @@ void resetResidualCheck() {
 }
 
 bool calibrate() {
-  digitalWrite(PIN_LED, HIGH);
+  digitalWrite(PIN_LED_CAL, HIGH);
 
   float s_samples[N];
   float r_samples[N];
@@ -69,7 +70,7 @@ bool calibrate() {
       "var_ref=%.2f. Keeping previous correction.\n",
       var_s, var_r
     );
-    digitalWrite(PIN_LED, LOW);
+    digitalWrite(PIN_LED_CAL, LOW);
     return false;
   }
 
@@ -80,7 +81,7 @@ bool calibrate() {
       "[alarm] Offset out of bounds: candidate=%.2f, limit=%.2f.\n",
       candidate_offset, MAX_ALLOWED_OFFSET
     );
-    digitalWrite(PIN_LED, LOW);
+    digitalWrite(PIN_LED_CAL, LOW);
     return false;
   }
 
@@ -92,7 +93,7 @@ bool calibrate() {
     offset_b
   );
 
-  digitalWrite(PIN_LED, LOW);
+  digitalWrite(PIN_LED_CAL, LOW);
   return true;
 }
 
@@ -163,8 +164,10 @@ void setup() {
   Serial.begin(115200);
   analogReadResolution(12);
 
-  pinMode(PIN_LED, OUTPUT);
-  digitalWrite(PIN_LED, LOW);
+  pinMode(PIN_LED_CAL, OUTPUT);
+  pinMode(PIN_LED_ERR, OUTPUT);
+  digitalWrite(PIN_LED_CAL, LOW);
+  digitalWrite(PIN_LED_ERR, LOW);
 
   Serial.println("Performing initial boot calibration...");
   calibrate();
@@ -189,6 +192,13 @@ void loop() {
   // Show readings using the current correction value.
   corrected = raw - offset_b;
   signed_residual = corrected - ref;
+
+  // Red LED: Turns ON when residual error exceeds tolerance, OFF when within tolerance
+  if (fabsf(signed_residual) > DRIFT_THRESHOLD) {
+    digitalWrite(PIN_LED_ERR, HIGH);
+  } else {
+    digitalWrite(PIN_LED_ERR, LOW);
+  }
 
   Serial.printf(
     "raw=%.2f ref=%.2f offset_b=%.2f corrected=%.2f residual=%.2f\n",
